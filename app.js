@@ -11,7 +11,7 @@ import { proposer, appliquer, textesDuFilm, heureLocale, periodeTexte } from './
 import { lookDisponible } from './lib/look.js';
 
 const $ = (id) => document.getElementById(id);
-const VERSION = 3;   // la même que dans sw.js
+const VERSION = 4;   // la même que dans sw.js
 const montrer = (m) => (window.__montrer ? window.__montrer(m) : console.error(m));
 
 const etat = {
@@ -212,6 +212,7 @@ function afficherListe() {
     const soucis = [];
     if (p.manquants.length) soucis.push(`Morceau${p.manquants.length > 1 ? 'x' : ''} ${p.manquants.join(', ')} manquant${p.manquants.length > 1 ? 's' : ''}`);
     for (const c of charges) {
+      if (c?.echec) soucis.push(`${c.echec} Vidéo laissée de côté.`);
       if (c?.erreur) soucis.push(c.erreur);
       else if (c?.infos && !c.infos.decodable) soucis.push(`Format ${c.infos.codec} pas lisible sur cet appareil : ignorée`);
     }
@@ -285,7 +286,7 @@ $('retirer-musique').addEventListener('click', () => {
 // ------------------------------------------------------------------ montage
 
 function sourcesLisibles() {
-  return etat.prises.flatMap((p) => p.chapitres).filter((s) => s.charge?.infos?.decodable);
+  return etat.prises.flatMap((p) => p.chapitres).filter((s) => s.charge?.infos?.decodable && !s.charge.echec);
 }
 
 function majBouton() {
@@ -343,7 +344,9 @@ function erreurMontage(e) {
 
 /** Étapes 1 et 2 : analyse (une seule fois par vidéo), GPS, choix des moments ; puis les propositions. */
 async function monter() {
-  const sources = sourcesLisibles();
+  // une vidéo écartée la fois d'avant est retentée (l'échec venait peut-être d'un manque de mémoire passager)
+  for (const c of etat.prises.flatMap((x) => x.chapitres)) if (c.charge) delete c.charge.echec;
+  let sources = sourcesLisibles();
   if (!sources.length || etat.occupe) return;
   libererDernierFilm();
   $('resultat').hidden = true;
@@ -351,17 +354,28 @@ async function monter() {
   const signal = etat.controle.signal;
   ecran('travail');
   await garderEcranAllume(true);
+  const debutAnalyse = performance.now();
   try {
     const aAnalyser = sources.filter((s) => !mesuresEnCache.has(cle(s.fichier)));
     debutPhase = performance.now();
     for (const [i, s] of aAnalyser.entries()) {
       const nom = s.fichier.name;
-      const mesures = await analyser(s.leger || s.fichier, {
-        signal,
-        onProgres: (f) => progres('1/3 · Analyse des vidéos', `${nom} (${i + 1} sur ${aAnalyser.length})`, (i + f) / aAnalyser.length),
-      });
-      mesuresEnCache.set(cle(s.fichier), mesures);
+      try {
+        const mesures = await analyser(s.leger || s.fichier, {
+          signal,
+          onProgres: (f) => progres('1/3 · Analyse des vidéos', `${nom} (${i + 1} sur ${aAnalyser.length})`, (i + f) / aAnalyser.length),
+        });
+        mesuresEnCache.set(cle(s.fichier), mesures);
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        // une vidéo illisible est laissée de côté (et signalée dans la liste) : les autres sont montées
+        s.charge.echec = (e && e.message) || String(e);
+        console.warn(e);
+      }
     }
+    afficherListe();
+    sources = sources.filter((s) => !s.charge.echec);
+    if (!sources.length) throw new Error('Aucune des vidéos n\'a pu être lue (voir la liste).');
     progres('1/3 · Analyse des vidéos', 'Lecture du GPS…', 1);
     for (const s of sources) {
       if (!gpsEnCache.has(cle(s.fichier))) gpsEnCache.set(cle(s.fichier), await gpsFichier(s.fichier));
@@ -392,7 +406,9 @@ async function monter() {
       if (memoire[p.id] !== undefined) p.actif = memoire[p.id];
       if (p.choix && p.choix.includes(memoire[`${p.id}-valeur`])) p.valeur = memoire[`${p.id}-valeur`];
     }
-    etat.projet = { sources, entrees, mesures, passages, bonMetrage, gps, propositions };
+    const ecartees = etat.prises.flatMap((x) => x.chapitres).filter((x) => x.charge?.echec).length;
+    etat.projet = { sources, entrees, mesures, passages, bonMetrage, gps, propositions, ecartees,
+      dureeAnalyse: (performance.now() - debutAnalyse) / 1000 };
     afficherPropositions();
     ecran('propositions');
   } catch (e) {
@@ -414,7 +430,8 @@ function majResume() {
   const p = etat.projet;
   const n = new Set(p.passages.map((x) => x.source)).size;
   $('propositions-resume').textContent = `${p.passages.length} moments choisis dans ${n} vidéo${n > 1 ? 's' : ''}`
-    + ` · film d'environ ${dureeTexte(estimation())}.`;
+    + ` · film d'environ ${dureeTexte(estimation())}.`
+    + (p.ecartees ? ` ${p.ecartees} vidéo${p.ecartees > 1 ? 's' : ''} illisible${p.ecartees > 1 ? 's' : ''} laissée${p.ecartees > 1 ? 's' : ''} de côté (voir la liste).` : '');
 }
 
 function memoriser() {
@@ -511,9 +528,11 @@ async function fabriquerLeFilm() {
       c.distance > 200 ? `${km(c.distance)} · ${metres(c.denivele)} de dénivelé${c.haut != null ? ` · point haut ${metres(c.haut)}` : ''}` : '',
     ] : null;
     debutPhase = performance.now();
+    const debutFabrication = performance.now();
+    const problemes = [];
     const ips = imagesParSeconde(p.sources.map((s) => s.charge.infos.ips));
     const blob = await fabriquer({
-      sources: p.sources, film, signal,
+      sources: p.sources, film, signal, problemes,
       reglages: { format: etat.reglages.format, ips, sonCamera: etat.reglages.sonCamera !== false, volumeMusique: 0.8 },
       musique: etat.musique,
       titre: choix.titre,
@@ -527,7 +546,8 @@ async function fabriquerLeFilm() {
       onProgres: (f) => progres('3/3 · Fabrication du film', `${dureeTexte(film.duree)} · ${FORMATS[etat.reglages.format].nom}`, f),
     });
     const nom = `${nomDeFichier(`Rando Cut - ${titreFilm || periode || 'film'}`)}.mp4`;
-    etat.resultat = { blob, url: URL.createObjectURL(blob), nom };
+    etat.resultat = { blob, url: URL.createObjectURL(blob), nom, problemes,
+      temps: { analyse: p.dureeAnalyse, fabrication: (performance.now() - debutFabrication) / 1000 } };
     ecran('reglages');
     afficherResultat(film, p.sources, p.bonMetrage, ips);
     $('aide-monter').textContent = 'Tu peux changer les réglages et refaire : l\'analyse est gardée, ce sera plus rapide.';
@@ -560,6 +580,12 @@ function afficherResultat(film, sources, bonMetrage, ips) {
   const mo = blob.size / 1e6;
   let infos = `${dureeTexte(film.duree)} · ${f.largeur}×${f.hauteur} · ${ips} images/s · ${mo < 10 ? mo.toFixed(1) : Math.round(mo)} Mo`;
   if (film.duree < etat.reglages.duree - 5) infos += ` · plus court que prévu : il n'y avait que ${dureeTexte(bonMetrage)} de bonnes images`;
+  const { temps, problemes } = etat.resultat;
+  if (temps) infos += `. Temps : analyse ${dureeTexte(temps.analyse)}, fabrication ${dureeTexte(temps.fabrication)}.`;
+  if (problemes && problemes.length) {
+    const liste = [...new Set(problemes)];
+    infos += ` Attention : ${liste.length} plan${liste.length > 1 ? 's' : ''} mal lu${liste.length > 1 ? 's' : ''} (${liste.slice(0, 3).join(' ; ')}${liste.length > 3 ? '…' : ''}), image figée ou son coupé à cet endroit.`;
+  }
   $('resultat-infos').textContent = infos;
   const ol = $('moments');
   ol.replaceChildren();
