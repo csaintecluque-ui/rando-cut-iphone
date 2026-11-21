@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Rando Cut</title>
+  <meta name="description" content="Montage automatique de tes vidéos GoPro, directement sur l'iPhone.">
+  <meta name="theme-color" content="#17130F">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Rando Cut">
+  <link rel="icon" type="image/svg+xml" href="icones/favicon.svg">
+  <link rel="apple-touch-icon" href="icones/icone-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="entete">
+    <img src="icones/favicon.svg" width="36" height="36" alt="">
+    <div>
+      <h1>Rando Cut</h1>
+      <p class="doux">Montage automatique, sur ton iPhone</p>
+    </div>
+  </header>
+
+  <main>
+    <section id="incompatible" class="carte alerte" hidden>
+      <h2>Mise à jour nécessaire</h2>
+      <p>Pour monter des vidéos, Rando Cut a besoin d'<strong>iOS 26</strong> ou plus récent
+        (Réglages › Général › Mise à jour logicielle), ouvert dans <strong>Safari</strong>.</p>
+      <p class="petit doux" id="incompatible-detail"></p>
+    </section>
+
+    <section id="installer" class="carte astuce" hidden>
+      <p>Pour l'avoir comme une vraie appli : bouton <strong>Partager</strong>
+        <span aria-hidden="true">⬆︎</span> puis <strong>Sur l'écran d'accueil</strong>.
+        Elle marchera ensuite même sans réseau.</p>
+      <button class="lien" id="installer-fermer" type="button">Compris</button>
+    </section>
+
+    <!-- 1. Les vidéos -->
+    <section class="carte" id="etape-videos">
+      <h2><span class="num">1</span> Tes vidéos</h2>
+      <p class="doux petit">Depuis <strong>Photos</strong>, ou depuis <strong>Fichiers</strong> si tu as branché
+        la GoPro ou sa carte SD : les HiLight sont alors gardés en priorité.</p>
+      <label class="bouton principal large">
+        <input type="file" id="choisir-videos" accept="video/*,.mp4,.MP4,.mov,.MOV,.lrv,.LRV" multiple hidden>
+        Choisir des vidéos
+      </label>
+      <ul id="liste" class="liste" aria-live="polite"></ul>
+      <p id="resume-videos" class="doux petit"></p>
+    </section>
+
+    <!-- 2. Le film -->
+    <section class="carte" id="etape-film">
+      <h2><span class="num">2</span> Ton film</h2>
+
+      <div class="champ">
+        <span class="etiquette">Durée</span>
+        <div class="segments" data-reglage="duree" role="radiogroup" aria-label="Durée du film">
+          <button type="button" data-valeur="30">30 s</button>
+          <button type="button" data-valeur="60">1 min</button>
+          <button type="button" data-valeur="120">2 min</button>
+          <button type="button" data-valeur="180">3 min</button>
+          <button type="button" data-valeur="300">5 min</button>
+        </div>
+      </div>
+
+      <div class="champ">
+        <span class="etiquette">Format</span>
+        <div class="segments" data-reglage="format" role="radiogroup" aria-label="Format">
+          <button type="button" data-valeur="paysage">Paysage</button>
+          <button type="button" data-valeur="vertical">Vertical</button>
+          <button type="button" data-valeur="carre">Carré</button>
+        </div>
+        <span class="aide" id="aide-format"></span>
+      </div>
+
+      <div class="champ">
+        <span class="etiquette">Rythme</span>
+        <div class="segments" data-reglage="rythme" role="radiogroup" aria-label="Rythme">
+          <button type="button" data-valeur="calme">Calme</button>
+          <button type="button" data-valeur="normal">Normal</button>
+          <button type="button" data-valeur="rapide">Rapide</button>
+        </div>
+        <span class="aide" id="aide-rythme"></span>
+      </div>
+
+      <div class="champ">
+        <label class="etiquette" for="titre">Titre <span class="doux">(facultatif)</span></label>
+        <input type="text" id="titre" maxlength="60" placeholder="Ex. : Le tour du lac" autocomplete="off">
+      </div>
+
+      <div class="champ">
+        <span class="etiquette">Musique</span>
+        <div class="ligne">
+          <label class="bouton">
+            <input type="file" id="choisir-musique" accept="audio/*,.mp3,.m4a,.wav,.aac" hidden>
+            Choisir une musique
+          </label>
+          <span id="nom-musique" class="doux">Aucune</span>
+          <button type="button" id="retirer-musique" class="lien" hidden>Retirer</button>
+        </div>
+        <span class="aide">Un fichier MP3 ou M4A rangé dans Fichiers. La musique baisse toute seule quand quelqu'un parle.</span>
+      </div>
+
+      <label class="interrupteur">
+        <input type="checkbox" id="son-camera" checked>
+        <span>Garder le son des vidéos</span>
+      </label>
+    </section>
+
+    <!-- 3. Monter -->
+    <section class="carte" id="etape-monter">
+      <h2><span class="num">3</span> Monter</h2>
+      <button type="button" class="bouton principal large" id="monter" disabled>Faire le film</button>
+      <p class="doux petit" id="aide-monter">Choisis d'abord quelques vidéos.</p>
+    </section>
+
+    <!-- Pendant le montage -->
+    <section class="carte" id="travail" hidden>
+      <h2 id="travail-titre">Montage en cours…</h2>
+      <p id="travail-detail" class="doux"></p>
+      <div class="barre"><div id="travail-barre"></div></div>
+      <p class="petit doux"><span id="travail-pourcent">0 %</span> <span id="travail-reste"></span></p>
+      <p class="petit">Garde l'appli ouverte et l'écran allumé jusqu'à la fin.</p>
+      <button type="button" class="bouton" id="annuler">Annuler</button>
+    </section>
+
+    <!-- Le résultat -->
+    <section class="carte" id="resultat" hidden>
+      <h2>Ton film est prêt</h2>
+      <video id="lecteur" controls playsinline preload="metadata"></video>
+      <p id="resultat-infos" class="doux petit"></p>
+      <button type="button" class="bouton principal large" id="partager">Enregistrer ou partager</button>
+      <a class="bouton large" id="telecharger" download>Télécharger le fichier</a>
+      <details class="petit">
+        <summary>Les moments choisis</summary>
+        <ol id="moments"></ol>
+      </details>
+      <button type="button" class="lien" id="refaire">Changer les réglages et refaire</button>
+    </section>
+
+    <p class="pied doux petit">Tes vidéos restent sur ton iPhone : rien n'est envoyé sur internet.
+      Les originaux ne sont jamais modifiés.</p>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

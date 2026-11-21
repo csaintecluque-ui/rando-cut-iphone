@@ -1,0 +1,32 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Rando Cut">
+  <defs>
+    <linearGradient id="ciel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F0B27A"/>
+      <stop offset="0.55" stop-color="#DB7E52"/>
+      <stop offset="1" stop-color="#B9483A"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <rect width="256" height="256" rx="56" fill="url(#ciel)"/>
+    <!-- soleil = bouton lecture -->
+    <circle cx="178" cy="78" r="44" fill="#FFF4E0" opacity="0.25"/>
+    <circle cx="178" cy="78" r="34" fill="#FFF4E0"/>
+    <path d="M166 59 L196 78 L166 97 Z" fill="#C2563A"/>
+    <!-- montagne du fond -->
+    <path d="M92 222 L170 112 L246 222 Z" fill="#5A3E2F"/>
+    <path d="M170 112 L156 132 L164 129 L171 137 L178 129 L185 132 Z" fill="#F3DEC2"/>
+    <!-- montagne de devant -->
+    <path d="M8 222 L90 92 L190 222 Z" fill="#1E1713"/>
+    <path d="M90 92 L68 124 L80 118 L90 128 L100 118 L112 124 Z" fill="#FFF4E0"/>
+    <!-- sentier en pointillés (le parcours de la rando) -->
+    <path d="M36 226 C60 206 104 204 96 182 C88 162 64 166 70 148 C74 136 86 132 90 124"
+          fill="none" stroke="#E9A06A" stroke-width="6" stroke-linecap="round" stroke-dasharray="1 13"/>
+    <!-- sol + marque de coupe (le montage) -->
+    <path d="M4.5 222 H251.5 A56 56 0 0 1 200 256 H56 A56 56 0 0 1 4.5 222 Z" fill="#1E1713"/>
+    <g fill="#E9A06A">
+      <rect x="28" y="234" width="64" height="10" rx="5"/>
+      <rect x="102" y="234" width="40" height="10" rx="5"/>
+      <rect x="152" y="234" width="76" height="10" rx="5"/>
+    </g>
+  </g>
+</svg>

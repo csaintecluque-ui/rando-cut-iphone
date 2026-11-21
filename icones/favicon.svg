@@ -1,0 +1,17 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Rando Cut">
+  <defs>
+    <linearGradient id="ciel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E9A06A"/>
+      <stop offset="1" stop-color="#C2563A"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="22" fill="url(#ciel)"/>
+  <!-- soleil = bouton lecture -->
+  <circle cx="70" cy="30" r="15" fill="#FFF4E0"/>
+  <path d="M65 22.5 L77.5 30 L65 37.5 Z" fill="#C2563A"/>
+  <!-- montagnes -->
+  <path d="M38 86 L66 46 L94 86 Z" fill="#4A3529"/>
+  <path d="M6 86 L36 38 L70 86 Z" fill="#1E1713"/>
+  <path d="M36 38 L27.5 51.3 L32 49 L36 53 L40 49 L44.5 51.3 Z" fill="#FFF4E0"/>
+  <path d="M1.5 86 H98.5 A22 22 0 0 1 78 100 H22 A22 22 0 0 1 1.5 86 Z" fill="#1E1713"/>
+</svg>
