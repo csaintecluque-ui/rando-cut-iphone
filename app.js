@@ -1,26 +1,34 @@
-// Rando Cut sur iPhone : choisir des vidéos, régler le film, monter. Tout se passe sur le téléphone.
+// Rando Cut sur iPhone : choisir des vidéos (et des photos), régler le film, voir les propositions, monter.
+// Tout se passe sur le téléphone.
 
 import { regrouper, infosFichier } from './lib/gopro.js';
 import { choisir, RYTHMES } from './lib/selection.js';
 import { construireFilm, fonctionParle, imagesParSeconde, dureeTexte, FORMATS } from './lib/film.js';
 import { manques, infosVideo, analyser, fabriquer } from './lib/media.js';
+import { estPhoto, datePhoto } from './lib/photos.js';
+import { gpsFichier, tracesParJour, chiffres, km, metres } from './lib/telemetrie.js';
+import { proposer, appliquer, textesDuFilm, heureLocale, periodeTexte } from './lib/propositions.js';
+import { lookDisponible } from './lib/look.js';
 
 const $ = (id) => document.getElementById(id);
-const VERSION = 2;   // la même que dans sw.js
+const VERSION = 3;   // la même que dans sw.js
 const montrer = (m) => (window.__montrer ? window.__montrer(m) : console.error(m));
 
 const etat = {
-  fichiers: [],          // tous les fichiers choisis (vidéos et .LRV)
+  fichiers: [],          // vidéos choisies (et .LRV)
+  photos: [],            // [{ fichier, date, url }]
   prises: [],            // [{ nom, chapitres: [source], manquants }]
   musique: null,
   reglages: { duree: 60, format: 'paysage', rythme: 'normal', sonCamera: true },
   occupe: false,
   controle: null,
+  projet: null,          // entre le choix des moments et la fabrication : { sources, entrees, passages, ... }
   resultat: null,        // { blob, url, nom }
 };
 
 const infosEnCache = new Map();    // clé du fichier → Promise<{ infos, gopro, vignette }>
 const mesuresEnCache = new Map();  // clé du fichier → mesures
+const gpsEnCache = new Map();      // clé du fichier → piste GPS ou null
 const cle = (f) => `${f.name}|${f.size}|${f.lastModified}`;
 
 const AIDES = {
@@ -30,18 +38,16 @@ const AIDES = {
 
 // ------------------------------------------------------------------ réglages
 
-function chargerReglages() {
-  try {
-    Object.assign(etat.reglages, JSON.parse(localStorage.getItem('randocut-reglages') || '{}'));
-  } catch { /* réglages par défaut */ }
+function lire(nom, defaut) {
+  try { return JSON.parse(localStorage.getItem(nom) || 'null') ?? defaut; } catch { return defaut; }
 }
 
-function sauverReglages() {
-  try { localStorage.setItem('randocut-reglages', JSON.stringify(etat.reglages)); } catch { /* tant pis */ }
+function ecrire(nom, valeur) {
+  try { localStorage.setItem(nom, JSON.stringify(valeur)); } catch { /* tant pis */ }
 }
 
 function afficherReglages() {
-  for (const groupe of document.querySelectorAll('.segments')) {
+  for (const groupe of document.querySelectorAll('.segments[data-reglage]')) {
     const nom = groupe.dataset.reglage;
     for (const b of groupe.querySelectorAll('button')) {
       b.setAttribute('role', 'radio');
@@ -53,13 +59,13 @@ function afficherReglages() {
   $('son-camera').checked = etat.reglages.sonCamera !== false;
 }
 
-for (const groupe of document.querySelectorAll('.segments')) {
+for (const groupe of document.querySelectorAll('.segments[data-reglage]')) {
   groupe.addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b || etat.occupe) return;
     const nom = groupe.dataset.reglage;
     etat.reglages[nom] = nom === 'duree' ? Number(b.dataset.valeur) : b.dataset.valeur;
-    sauverReglages();
+    ecrire('randocut-reglages', etat.reglages);
     afficherReglages();
     majBouton();
   });
@@ -67,10 +73,10 @@ for (const groupe of document.querySelectorAll('.segments')) {
 
 $('son-camera').addEventListener('change', (e) => {
   etat.reglages.sonCamera = e.target.checked;
-  sauverReglages();
+  ecrire('randocut-reglages', etat.reglages);
 });
 
-// ------------------------------------------------------------------ vidéos
+// ------------------------------------------------------------------ vidéos et photos
 
 function definition(l, h) {
   const grand = Math.max(l, h);
@@ -82,14 +88,10 @@ function definition(l, h) {
   return `${l}×${h}`;
 }
 
-const formatDate = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const formatDateUTC = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
-
 /** Date de tournage en texte (heure de la caméra pour une GoPro, heure du téléphone sinon). */
 function dateTexte(gopro) {
   if (!gopro || !gopro.date) return '';
-  if (gopro.fuseau != null) return formatDateUTC.format(new Date(gopro.date.getTime() + gopro.fuseau * 60000));
-  return formatDate.format(gopro.date);
+  return heureLocale(gopro.date, gopro.fuseau).jourAnnee;
 }
 
 function chargerInfos(source) {
@@ -112,10 +114,40 @@ function chargerInfos(source) {
 }
 
 async function ajouterFichiers(liste) {
-  const deja = new Set(etat.fichiers.map(cle));
-  for (const f of liste) if (!deja.has(cle(f))) etat.fichiers.push(f);
+  const deja = new Set([...etat.fichiers, ...etat.photos.map((p) => p.fichier)].map(cle));
+  const nouvelles = [];
+  for (const f of liste) {
+    if (deja.has(cle(f))) continue;
+    if (estPhoto(f)) nouvelles.push(f);
+    else etat.fichiers.push(f);
+  }
+  for (const f of nouvelles) etat.photos.push({ fichier: f, date: await datePhoto(f), url: URL.createObjectURL(f) });
+  etat.photos.sort((a, b) => (a.date ?? Infinity) - (b.date ?? Infinity));
+  afficherPhotos();
   await regrouperEtAfficher();
 }
+
+function afficherPhotos() {
+  const zone = $('photos');
+  zone.hidden = !etat.photos.length;
+  const bande = $('photos-bande');
+  bande.replaceChildren();
+  for (const p of etat.photos.slice(0, 12)) {
+    const img = document.createElement('img');
+    img.src = p.url;
+    img.alt = '';
+    img.loading = 'lazy';
+    bande.append(img);
+  }
+  const n = etat.photos.length, sansDate = etat.photos.filter((p) => !p.date).length;
+  $('photos-resume').textContent = `${n} photo${n > 1 ? 's' : ''}${sansDate ? ` (dont ${sansDate} sans date)` : ''} : Rando Cut proposera d'en glisser quelques-unes dans le film.`;
+}
+
+$('retirer-photos').addEventListener('click', () => {
+  for (const p of etat.photos) URL.revokeObjectURL(p.url);
+  etat.photos = [];
+  afficherPhotos();
+});
 
 async function regrouperEtAfficher() {
   const prises = regrouper(etat.fichiers).map((p) => ({
@@ -137,7 +169,7 @@ async function regrouperEtAfficher() {
 function afficherListe() {
   const ul = $('liste');
   ul.replaceChildren();
-  let total = 0, n = 0, lisibles = 0;
+  let total = 0, n = 0;
   for (const p of etat.prises) {
     const li = document.createElement('li');
     const charges = p.chapitres.map((s) => s.charge);
@@ -208,11 +240,9 @@ function afficherListe() {
     if (pret) {
       total += duree;
       n++;
-      lisibles += p.chapitres.filter((s) => s.charge?.infos?.decodable).length;
     }
   }
   $('resume-videos').textContent = n ? `${n} vidéo${n > 1 ? 's' : ''} · ${dureeTexte(total)} au total` : '';
-  etat.lisibles = lisibles;
   majBouton();
 }
 
@@ -224,7 +254,7 @@ async function recevoirVideos(e) {
   $('etat-videos').textContent = `${n} fichier${n > 1 ? 's' : ''} reçu${n > 1 ? 's' : ''}, lecture en cours…`;
   try {
     await ajouterFichiers(liste);
-    const rien = !etat.prises.length;
+    const rien = !etat.prises.length && !etat.photos.length;
     $('etat-videos').textContent = rien
       ? `Aucune vidéo reconnue parmi ${liste.map((f) => `${f.name} (${f.type || 'type inconnu'})`).join(', ')}.`
       : '';
@@ -264,7 +294,7 @@ function majBouton() {
   b.disabled = etat.occupe || !n || !!manques().length;
   b.textContent = `Faire le film (${dureeTexte(etat.reglages.duree)})`;
   $('aide-monter').textContent = n
-    ? 'L\'appli choisit les meilleurs moments (HiLight, mouvement, voix, netteté), dans l\'ordre de la journée.'
+    ? 'L\'appli choisit les meilleurs moments (HiLight, mouvement, voix, netteté), puis te propose des ajouts.'
     : 'Choisis d\'abord quelques vidéos.';
 }
 
@@ -283,28 +313,45 @@ function nomDeFichier(texte) {
   return texte.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Rando Cut';
 }
 
-function occupe(oui) {
-  etat.occupe = oui;
-  $('travail').hidden = !oui;
-  for (const id of ['etape-videos', 'etape-film', 'etape-monter']) $(id).toggleAttribute('inert', oui);
+/** Écran affiché : 'reglages', 'travail' (barre de progression) ou 'propositions'. */
+function ecran(nom) {
+  etat.occupe = nom !== 'reglages';
+  $('travail').hidden = nom !== 'travail';
+  $('propositions').hidden = nom !== 'propositions';
+  for (const id of ['etape-videos', 'etape-film', 'etape-monter']) $(id).toggleAttribute('inert', etat.occupe);
   majBouton();
-  if (oui) $('travail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (nom !== 'reglages') $(nom).scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+let verrou = null;
+async function garderEcranAllume(oui) {
+  try {
+    if (oui && !verrou) verrou = await navigator.wakeLock?.request('screen');
+    if (!oui && verrou) { await verrou.release(); verrou = null; }
+  } catch { verrou = null; /* l'écran pourra s'éteindre : on l'a dit à l'utilisateur */ }
+}
+
+function erreurMontage(e) {
+  if (e && e.name === 'AbortError') {
+    $('aide-monter').textContent = 'Montage annulé.';
+  } else {
+    console.error(e);
+    $('aide-monter').textContent = '';
+    alert(`Le montage n'a pas pu se faire.\n\n${(e && e.message) || e}`);
+  }
+}
+
+/** Étapes 1 et 2 : analyse (une seule fois par vidéo), GPS, choix des moments ; puis les propositions. */
 async function monter() {
   const sources = sourcesLisibles();
   if (!sources.length || etat.occupe) return;
-  liberDernierFilm();
+  libererDernierFilm();
   $('resultat').hidden = true;
   etat.controle = new AbortController();
   const signal = etat.controle.signal;
-  occupe(true);
-  let verrou = null;
+  ecran('travail');
+  await garderEcranAllume(true);
   try {
-    verrou = await navigator.wakeLock?.request('screen');
-  } catch { /* l'écran pourra s'éteindre : on l'a dit à l'utilisateur */ }
-  try {
-    // 1. analyse (une seule fois par vidéo : refaire avec d'autres réglages est ensuite rapide)
     const aAnalyser = sources.filter((s) => !mesuresEnCache.has(cle(s.fichier)));
     debutPhase = performance.now();
     for (const [i, s] of aAnalyser.entries()) {
@@ -315,56 +362,185 @@ async function monter() {
       });
       mesuresEnCache.set(cle(s.fichier), mesures);
     }
+    progres('1/3 · Analyse des vidéos', 'Lecture du GPS…', 1);
+    for (const s of sources) {
+      if (!gpsEnCache.has(cle(s.fichier))) gpsEnCache.set(cle(s.fichier), await gpsFichier(s.fichier));
+    }
 
-    // 2. choix des meilleurs moments
     progres('2/3 · Choix des meilleurs moments', '', 1);
     const mesures = sources.map((s) => mesuresEnCache.get(cle(s.fichier)));
     const entrees = sources.map((s, i) => ({
+      nom: s.fichier.name,
       duree: Math.min(s.charge.infos.duree, mesures[i].duree || s.charge.infos.duree),
       mesures: mesures[i],
       hilights: s.charge.gopro.hilights,
       sommet: null,
+      date: s.charge.gopro.date,
+      fuseau: s.charge.gopro.fuseau,
     }));
     const { passages, bonMetrage } = choisir(entrees, etat.reglages.duree, RYTHMES[etat.reglages.rythme] || 4);
     if (!passages.length) throw new Error('Pas assez de bons moments dans ces vidéos (trop courtes, trop sombres ou trop floues ?).');
-    const film = construireFilm(passages, etat.reglages.rythme === 'rapide' ? 0.3 : 0.5);
-
-    // 3. fabrication
-    const titre = $('titre').value.trim();
-    const date = dateTexte(sources[0].charge.gopro);
-    debutPhase = performance.now();
-    const ips = imagesParSeconde(sources.map((s) => s.charge.infos.ips));
-    const blob = await fabriquer({
-      sources, film, signal,
-      reglages: { format: etat.reglages.format, ips, sonCamera: etat.reglages.sonCamera !== false, volumeMusique: 0.8 },
-      musique: etat.musique,
-      titre,
-      sousTitre: titre ? date : '',
-      parle: fonctionParle(film, mesures),
-      onEtape: (e) => { if (e === 'image') debutPhase = performance.now(); },
-      onProgres: (f) => progres('3/3 · Fabrication du film', `${dureeTexte(film.duree)} · ${FORMATS[etat.reglages.format].nom}`, f),
+    const jours = entrees.map((e) => (e.date ? heureLocale(e.date, e.fuseau).cle : null));
+    const gps = tracesParJour(sources.map((s) => gpsEnCache.get(cle(s.fichier))), jours);
+    const propositions = proposer({
+      entrees, passages, gps: gps.traces.length ? gps : null, photos: etat.photos, titre: $('titre').value.trim(),
+      lookDispo: lookDisponible(), dureeVoulue: etat.reglages.duree,
     });
-
-    const nom = `${nomDeFichier(`Rando Cut - ${titre || date || 'film'}`)}.mp4`;
-    etat.resultat = { blob, url: URL.createObjectURL(blob), nom };
-    afficherResultat(film, sources, bonMetrage, ips);
-  } catch (e) {
-    if (e && e.name === 'AbortError') {
-      $('aide-monter').textContent = 'Montage annulé.';
-    } else {
-      console.error(e);
-      $('aide-monter').textContent = '';
-      alert(`Le montage n'a pas pu se faire.\n\n${(e && e.message) || e}`);
+    // les choix de la dernière fois (cases décochées, ambiance) sont gardés
+    const memoire = lire('randocut-propositions', {});
+    for (const p of propositions) {
+      if (memoire[p.id] !== undefined) p.actif = memoire[p.id];
+      if (p.choix && p.choix.includes(memoire[`${p.id}-valeur`])) p.valeur = memoire[`${p.id}-valeur`];
     }
+    etat.projet = { sources, entrees, mesures, passages, bonMetrage, gps, propositions };
+    afficherPropositions();
+    ecran('propositions');
+  } catch (e) {
+    ecran('reglages');
+    erreurMontage(e);
   } finally {
-    try { await verrou?.release(); } catch { /* déjà libéré */ }
     etat.controle = null;
-    occupe(false);
-    if (etat.resultat) $('aide-monter').textContent = 'Tu peux changer les réglages et refaire : l\'analyse est gardée, ce sera plus rapide.';
+    await garderEcranAllume(false);
   }
 }
 
-function liberDernierFilm() {
+function estimation() {
+  const p = etat.projet;
+  const choix = appliquer(p.propositions, { passages: p.passages, entrees: p.entrees });
+  return construireFilm(choix.passages, etat.reglages.rythme === 'rapide' ? 0.3 : 0.5).duree;
+}
+
+function majResume() {
+  const p = etat.projet;
+  const n = new Set(p.passages.map((x) => x.source)).size;
+  $('propositions-resume').textContent = `${p.passages.length} moments choisis dans ${n} vidéo${n > 1 ? 's' : ''}`
+    + ` · film d'environ ${dureeTexte(estimation())}.`;
+}
+
+function memoriser() {
+  const memoire = lire('randocut-propositions', {});
+  for (const p of etat.projet.propositions) {
+    memoire[p.id] = p.actif;
+    if (p.choix) memoire[`${p.id}-valeur`] = p.valeur;
+  }
+  ecrire('randocut-propositions', memoire);
+}
+
+function afficherPropositions() {
+  const zone = $('propositions-liste');
+  zone.replaceChildren();
+  let groupe = null;
+  for (const p of etat.projet.propositions) {
+    if (p.groupe !== groupe) {
+      groupe = p.groupe;
+      const h = document.createElement('h3');
+      h.textContent = groupe;
+      zone.append(h);
+    }
+    const bloc = document.createElement('div');
+    bloc.className = 'proposition';
+    const label = document.createElement('label');
+    label.className = 'interrupteur';
+    const caseACocher = document.createElement('input');
+    caseACocher.type = 'checkbox';
+    caseACocher.checked = p.actif;
+    caseACocher.dataset.id = p.id;
+    const texte = document.createElement('span');
+    const titre = document.createElement('strong');
+    titre.textContent = p.libelle;
+    texte.append(titre);
+    if (p.detail) {
+      const d = document.createElement('small');
+      d.textContent = p.detail;
+      texte.append(d);
+    }
+    label.append(caseACocher, texte);
+    bloc.append(label);
+    let choix = null;
+    if (p.choix) {
+      choix = document.createElement('div');
+      choix.className = 'segments choix';
+      choix.dataset.id = p.id;
+      for (const c of p.choix) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = c;
+        b.dataset.valeur = c;
+        b.setAttribute('aria-checked', String(c === p.valeur));
+        b.addEventListener('click', () => {
+          p.valeur = c;
+          for (const x of choix.children) x.setAttribute('aria-checked', String(x === b));
+          memoriser();
+        });
+        choix.append(b);
+      }
+      choix.hidden = !p.actif;
+      bloc.append(choix);
+    }
+    caseACocher.addEventListener('change', () => {
+      p.actif = caseACocher.checked;
+      if (choix) choix.hidden = !p.actif;
+      memoriser();
+      majResume();
+    });
+    zone.append(bloc);
+  }
+  majResume();
+}
+
+/** Étape 3 : fabrication du film avec les propositions cochées. */
+async function fabriquerLeFilm() {
+  const p = etat.projet;
+  if (!p) return;
+  etat.controle = new AbortController();
+  const signal = etat.controle.signal;
+  ecran('travail');
+  await garderEcranAllume(true);
+  try {
+    const choix = appliquer(p.propositions, { passages: p.passages, entrees: p.entrees });
+    const film = construireFilm(choix.passages, etat.reglages.rythme === 'rapide' ? 0.3 : 0.5);
+    const textes = textesDuFilm(film, p.entrees, { legendes: choix.legendes, jours: choix.jours, titre: !!choix.titre });
+    const heures = film.morceaux.filter((m) => m.type === 'video' && p.entrees[m.source].date)
+      .map((m) => heureLocale(p.entrees[m.source].date, p.entrees[m.source].fuseau));
+    const periode = periodeTexte(heures);
+    const c = chiffres(p.gps.traces.length ? p.gps : null);
+    const titreFilm = (p.propositions.find((x) => x.id === 'titre') || {}).valeur || '';
+    const generique = choix.generique ? [
+      titreFilm,
+      periode,
+      c.distance > 200 ? `${km(c.distance)} · ${metres(c.denivele)} de dénivelé${c.haut != null ? ` · point haut ${metres(c.haut)}` : ''}` : '',
+    ] : null;
+    debutPhase = performance.now();
+    const ips = imagesParSeconde(p.sources.map((s) => s.charge.infos.ips));
+    const blob = await fabriquer({
+      sources: p.sources, film, signal,
+      reglages: { format: etat.reglages.format, ips, sonCamera: etat.reglages.sonCamera !== false, volumeMusique: 0.8 },
+      musique: etat.musique,
+      titre: choix.titre,
+      sousTitre: choix.titre && heures.length && !(p.propositions.find((x) => x.id === 'titre') || {}).auto ? heures[0].jourAnnee : '',
+      parle: fonctionParle(film, p.mesures),
+      extras: {
+        legendes: textes.legendes, jours: textes.jours, generique,
+        gps: p.gps, carte: choix.carte, profil: choix.profil, look: choix.look,
+      },
+      onEtape: (e) => { if (e === 'image') debutPhase = performance.now(); },
+      onProgres: (f) => progres('3/3 · Fabrication du film', `${dureeTexte(film.duree)} · ${FORMATS[etat.reglages.format].nom}`, f),
+    });
+    const nom = `${nomDeFichier(`Rando Cut - ${titreFilm || periode || 'film'}`)}.mp4`;
+    etat.resultat = { blob, url: URL.createObjectURL(blob), nom };
+    ecran('reglages');
+    afficherResultat(film, p.sources, p.bonMetrage, ips);
+    $('aide-monter').textContent = 'Tu peux changer les réglages et refaire : l\'analyse est gardée, ce sera plus rapide.';
+  } catch (e) {
+    ecran('propositions');
+    erreurMontage(e);
+  } finally {
+    etat.controle = null;
+    await garderEcranAllume(false);
+  }
+}
+
+function libererDernierFilm() {
   if (etat.resultat) URL.revokeObjectURL(etat.resultat.url);
   etat.resultat = null;
   $('lecteur').removeAttribute('src');
@@ -389,7 +565,12 @@ function afficherResultat(film, sources, bonMetrage, ips) {
   ol.replaceChildren();
   for (const m of film.morceaux) {
     const li = document.createElement('li');
-    li.textContent = `${sources[m.source].fichier.name} — de ${minutes(m.debut)} à ${minutes(m.fin)} (${m.raison})`;
+    if (m.type === 'photo') li.textContent = `Photo ${m.fichier.name}`;
+    else if (m.type === 'generique') li.textContent = 'Générique de fin';
+    else {
+      const raison = m.vitesse > 1 ? `accéléré ×${m.vitesse}` : `${m.raison}${m.vitesse === 0.5 ? ', ralenti' : ''}`;
+      li.textContent = `${sources[m.source].fichier.name} — de ${minutes(m.debut)} à ${minutes(m.fin)} (${raison})`;
+    }
     ol.append(li);
   }
   $('resultat').hidden = false;
@@ -397,6 +578,11 @@ function afficherResultat(film, sources, bonMetrage, ips) {
 }
 
 $('monter').addEventListener('click', monter);
+$('fabriquer').addEventListener('click', fabriquerLeFilm);
+$('propositions-retour').addEventListener('click', () => {
+  ecran('reglages');
+  $('etape-film').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
 $('annuler').addEventListener('click', () => etat.controle?.abort());
 $('refaire').addEventListener('click', () => $('etape-film').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 
@@ -415,12 +601,12 @@ $('partager').addEventListener('click', async () => {
 });
 
 window.addEventListener('beforeunload', (e) => {
-  if (etat.occupe) e.preventDefault();
+  if (etat.occupe && !$('travail').hidden) e.preventDefault();
 });
 
 // ------------------------------------------------------------------ démarrage
 
-chargerReglages();
+Object.assign(etat.reglages, lire('randocut-reglages', {}));
 afficherReglages();
 majBouton();
 $('version').textContent = `Version ${VERSION} · prête`;
@@ -433,12 +619,10 @@ if (manque.length) {
 
 const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
 const installee = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-try {
-  if (ios && !installee && !localStorage.getItem('randocut-astuce-vue')) $('installer').hidden = false;
-} catch { /* pas de stockage */ }
+if (ios && !installee && !lire('randocut-astuce-vue', false)) $('installer').hidden = false;
 $('installer-fermer').addEventListener('click', () => {
   $('installer').hidden = true;
-  try { localStorage.setItem('randocut-astuce-vue', '1'); } catch { /* tant pis */ }
+  ecrire('randocut-astuce-vue', true);
 });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
@@ -446,4 +630,4 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
 }
 
 // pour les tests automatiques (Chrome hors écran)
-window.randoCut = { etat, ajouterFichiers, monter, mesuresEnCache };
+window.randoCut = { etat, ajouterFichiers, monter, fabriquerLeFilm, mesuresEnCache };

@@ -4,7 +4,9 @@
 
 Montage automatique des vidéos GoPro (vacances, randonnées), **directement sur l'iPhone** : on choisit ses vidéos,
 l'appli garde les meilleurs moments (HiLight d'abord, puis mouvement, voix, netteté, dans l'ordre de la journée) et
-fabrique un film MP4 avec musique et titre.
+fabrique un film MP4 avec musique et titre. Avant la fabrication, une liste à cocher propose des ajouts : textes
+(titre, date et heure, générique), carte du parcours et profil d'altitude (GPS de la GoPro), ralenti sur les HiLight,
+accéléré du chemin, ambiance de couleurs, photos glissées à leur heure.
 
 **Rien n'est envoyé sur internet** : les vidéos sont lues et montées sur le téléphone, les originaux ne sont jamais
 modifiés.

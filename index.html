@@ -68,15 +68,21 @@
 
     <!-- 1. Les vidéos -->
     <section class="carte" id="etape-videos">
-      <h2><span class="num">1</span> Tes vidéos</h2>
+      <h2><span class="num">1</span> Tes vidéos et photos</h2>
       <p class="doux petit">Depuis <strong>Photos</strong>, ou depuis <strong>Fichiers</strong> si tu as branché
-        la GoPro ou sa carte SD : les HiLight sont alors gardés en priorité.</p>
+        la GoPro ou sa carte SD : les HiLight et le GPS sont alors gardés. Ajoute aussi quelques photos si tu veux
+        qu'elles apparaissent dans le film.</p>
       <label class="bouton principal large">
-        <input type="file" id="choisir-videos" accept="video/*,.mp4,.MP4,.mov,.MOV,.lrv,.LRV" multiple hidden>
-        Choisir des vidéos
+        <input type="file" id="choisir-videos" accept="video/*,image/*,.mp4,.MP4,.mov,.MOV,.lrv,.LRV" multiple hidden>
+        Choisir des vidéos et des photos
       </label>
       <p id="etat-videos" class="petit" aria-live="polite"></p>
       <ul id="liste" class="liste" aria-live="polite"></ul>
+      <div id="photos" hidden>
+        <div id="photos-bande" class="bande"></div>
+        <p class="doux petit"><span id="photos-resume"></span>
+          <button type="button" class="lien" id="retirer-photos">Retirer les photos</button></p>
+      </div>
       <p id="resume-videos" class="doux petit"></p>
     </section>
 
@@ -144,6 +150,16 @@
       <h2><span class="num">3</span> Monter</h2>
       <button type="button" class="bouton principal large" id="monter" disabled>Faire le film</button>
       <p class="doux petit" id="aide-monter">Choisis d'abord quelques vidéos.</p>
+    </section>
+
+    <!-- Les propositions d'ajouts, avant la fabrication -->
+    <section class="carte" id="propositions" hidden>
+      <h2>Mes propositions</h2>
+      <p class="doux petit" id="propositions-resume"></p>
+      <p class="petit">Décoche ce que tu ne veux pas, puis lance la fabrication. Tes choix sont gardés pour la prochaine fois.</p>
+      <div id="propositions-liste"></div>
+      <button type="button" class="bouton principal large" id="fabriquer">Fabriquer le film</button>
+      <button type="button" class="lien" id="propositions-retour">Revenir aux réglages</button>
     </section>
 
     <!-- Pendant le montage -->

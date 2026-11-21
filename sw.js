@@ -1,6 +1,6 @@
 // Garde l'appli sur le téléphone pour qu'elle marche sans réseau (en randonnée, en vacances).
 // Change VERSION à chaque modification de l'appli : le téléphone prend alors la nouvelle version.
-const VERSION = 'randocut-iphone-2';
+const VERSION = 'randocut-iphone-3';
 const FICHIERS = [
   './',
   'index.html',
@@ -12,6 +12,11 @@ const FICHIERS = [
   'lib/selection.js',
   'lib/film.js',
   'lib/media.js',
+  'lib/photos.js',
+  'lib/telemetrie.js',
+  'lib/propositions.js',
+  'lib/dessins.js',
+  'lib/look.js',
   'vendor/mediabunny.js',
   'icones/favicon.svg',
   'icones/logo.svg',
