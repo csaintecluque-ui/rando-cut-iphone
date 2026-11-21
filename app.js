@@ -6,6 +6,8 @@ import { construireFilm, fonctionParle, imagesParSeconde, dureeTexte, FORMATS } 
 import { manques, infosVideo, analyser, fabriquer } from './lib/media.js';
 
 const $ = (id) => document.getElementById(id);
+const VERSION = 2;   // la même que dans sw.js
+const montrer = (m) => (window.__montrer ? window.__montrer(m) : console.error(m));
 
 const etat = {
   fichiers: [],          // tous les fichiers choisis (vidéos et .LRV)
@@ -96,7 +98,10 @@ function chargerInfos(source) {
     infosEnCache.set(k, (async () => {
       const gopro = await infosFichier(source.fichier);
       try {
-        const infos = await infosVideo(source.fichier);
+        const infos = await Promise.race([
+          infosVideo(source.fichier),
+          new Promise((_, non) => setTimeout(() => non(new Error('Lecture trop longue (plus de 60 s) : vidéo ignorée.')), 60000)),
+        ]);
         return { infos, gopro, vignette: infos.vignette ? URL.createObjectURL(infos.vignette) : null };
       } catch (e) {
         return { infos: null, gopro, vignette: null, erreur: e.message || String(e) };
@@ -211,11 +216,24 @@ function afficherListe() {
   majBouton();
 }
 
-$('choisir-videos').addEventListener('change', async (e) => {
-  const liste = [...e.target.files];
+async function recevoirVideos(e) {
+  const liste = [...(e.target.files || [])];
+  if (!liste.length) return;   // déjà traité (Safari envoie « input » puis « change »)
   e.target.value = '';
-  if (liste.length) await ajouterFichiers(liste);
-});
+  const n = liste.length;
+  $('etat-videos').textContent = `${n} fichier${n > 1 ? 's' : ''} reçu${n > 1 ? 's' : ''}, lecture en cours…`;
+  try {
+    await ajouterFichiers(liste);
+    const rien = !etat.prises.length;
+    $('etat-videos').textContent = rien
+      ? `Aucune vidéo reconnue parmi ${liste.map((f) => `${f.name} (${f.type || 'type inconnu'})`).join(', ')}.`
+      : '';
+  } catch (err) {
+    $('etat-videos').textContent = '';
+    montrer(`Ajout des vidéos : ${(err && err.message) || err}`);
+  }
+}
+for (const evt of ['input', 'change']) $('choisir-videos').addEventListener(evt, recevoirVideos);
 
 // ------------------------------------------------------------------ musique
 
@@ -405,6 +423,7 @@ window.addEventListener('beforeunload', (e) => {
 chargerReglages();
 afficherReglages();
 majBouton();
+$('version').textContent = `Version ${VERSION} · prête`;
 
 const manque = manques();
 if (manque.length) {

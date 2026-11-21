@@ -16,6 +16,27 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <script>
+    // Avant tout le reste : montre les erreurs à l'écran (sur iPhone, pas de console pour les voir).
+    window.__erreurs = [];
+    window.__montrer = function (m) {
+      window.__erreurs.push(String(m));
+      var d = document.getElementById('diagnostic');
+      if (d) { d.hidden = false; d.querySelector('pre').textContent = window.__erreurs.join('\n'); }
+    };
+    window.addEventListener('error', function (e) {
+      var t = e.target;
+      if (t && t !== window && (t.src || t.href)) return window.__montrer('Fichier non chargé : ' + (t.src || t.href));
+      window.__montrer((e.message || 'Erreur') + (e.filename ? ' — ' + e.filename.split('/').pop() + ':' + e.lineno + ':' + e.colno : ''));
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      var r = e.reason;
+      window.__montrer('Erreur : ' + (r && (r.name ? r.name + ' — ' : '') + (r && r.message || r)));
+    });
+    setTimeout(function () {
+      if (!window.randoCut) window.__montrer("Le programme de l'appli n'a pas démarré (Safari " + (navigator.userAgent.match(/Version\/([\d.]+)/) || [])[1] + ').');
+    }, 10000);
+  </script>
   <header class="entete">
     <img src="icones/favicon.svg" width="36" height="36" alt="">
     <div>
@@ -25,6 +46,12 @@
   </header>
 
   <main>
+    <section id="diagnostic" class="carte alerte" hidden>
+      <h2>Un problème est survenu</h2>
+      <p class="petit">Fais une capture d'écran de ce cadre et envoie-la à Claude.</p>
+      <pre class="petit"></pre>
+    </section>
+
     <section id="incompatible" class="carte alerte" hidden>
       <h2>Mise à jour nécessaire</h2>
       <p>Pour monter des vidéos, Rando Cut a besoin d'<strong>iOS 26</strong> ou plus récent
@@ -48,6 +75,7 @@
         <input type="file" id="choisir-videos" accept="video/*,.mp4,.MP4,.mov,.MOV,.lrv,.LRV" multiple hidden>
         Choisir des vidéos
       </label>
+      <p id="etat-videos" class="petit" aria-live="polite"></p>
       <ul id="liste" class="liste" aria-live="polite"></ul>
       <p id="resume-videos" class="doux petit"></p>
     </section>
@@ -144,6 +172,7 @@
 
     <p class="pied doux petit">Tes vidéos restent sur ton iPhone : rien n'est envoyé sur internet.
       Les originaux ne sont jamais modifiés.</p>
+    <p class="pied doux petit" id="version">Chargement…</p>
   </main>
 
   <script type="module" src="app.js"></script>
