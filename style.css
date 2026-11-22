@@ -1,5 +1,18 @@
 /* Rando Cut sur iPhone — mêmes couleurs que le logiciel du PC (montage/studio/theme.py). */
+/* Thème clair par défaut ; « Thème sombre » en bas de page (choix gardé sur le téléphone). */
 :root {
+  --fond: #FBF6EC;
+  --panneau: #F3EBDD;
+  --panneau-clair: #E8DCC6;
+  --bord: #CDBFA6;
+  --texte: #2B2019;
+  --doux: #75675A;
+  --cuivre: #B5622F;
+  --cuivre-fort: #934B1F;
+  --rouge: #C2402B;
+  color-scheme: light;
+}
+:root[data-theme="sombre"] {
   --fond: #17130F;
   --panneau: #201A16;
   --panneau-clair: #2A231E;
@@ -121,7 +134,7 @@ main { max-width: 640px; margin: 0 auto; padding: 6px 12px 40px; }
 .liste .attention { font-size: 13px; color: var(--rouge); }
 .liste .badge {
   display: inline-block; font-size: 11px; font-weight: 700;
-  color: var(--fond); background: var(--cuivre);
+  color: #fff; background: var(--cuivre);
   border-radius: 6px; padding: 0 6px; margin-left: 4px;
 }
 .retirer {

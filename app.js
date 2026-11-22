@@ -11,7 +11,7 @@ import { proposer, appliquer, textesDuFilm, heureLocale, periodeTexte } from './
 import { lookDisponible } from './lib/look.js';
 
 const $ = (id) => document.getElementById(id);
-const VERSION = 4;   // la même que dans sw.js
+const VERSION = 5;   // la même que dans sw.js
 const montrer = (m) => (window.__montrer ? window.__montrer(m) : console.error(m));
 
 const etat = {
@@ -636,6 +636,21 @@ Object.assign(etat.reglages, lire('randocut-reglages', {}));
 afficherReglages();
 majBouton();
 $('version').textContent = `Version ${VERSION} · prête`;
+
+// Thème : clair par défaut, sombre au choix (bouton en bas de page), gardé sur le téléphone
+function majTheme() {
+  const sombre = document.documentElement.dataset.theme === 'sombre';
+  $('theme').textContent = sombre ? 'Thème clair' : 'Thème sombre';
+  const meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.content = sombre ? '#17130F' : '#FBF6EC';
+}
+$('theme').addEventListener('click', () => {
+  const sombre = document.documentElement.dataset.theme !== 'sombre';
+  document.documentElement.dataset.theme = sombre ? 'sombre' : 'clair';
+  try { localStorage.setItem('randocut.theme', sombre ? 'sombre' : 'clair'); } catch { /* tant pis */ }
+  majTheme();
+});
+majTheme();
 
 const manque = manques();
 if (manque.length) {

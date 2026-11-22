@@ -1,6 +1,6 @@
 // Garde l'appli sur le téléphone pour qu'elle marche sans réseau (en randonnée, en vacances).
 // Change VERSION à chaque modification de l'appli : le téléphone prend alors la nouvelle version.
-const VERSION = 'randocut-iphone-4';
+const VERSION = 'randocut-iphone-5';
 const FICHIERS = [
   './',
   'index.html',

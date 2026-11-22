@@ -5,10 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Rando Cut</title>
   <meta name="description" content="Montage automatique de tes vidéos GoPro, directement sur l'iPhone.">
-  <meta name="theme-color" content="#17130F">
+  <meta name="theme-color" content="#FBF6EC">
+  <script>
+    // Thème choisi (clair par défaut), posé avant l'affichage
+    (function () {
+      var t = 'clair';
+      try { t = localStorage.getItem('randocut.theme') === 'sombre' ? 'sombre' : 'clair'; } catch (e) {}
+      document.documentElement.dataset.theme = t;
+      if (t === 'sombre') document.querySelector('meta[name=theme-color]').content = '#17130F';
+    })();
+  </script>
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Rando Cut">
   <link rel="icon" type="image/svg+xml" href="icones/favicon.svg">
   <link rel="apple-touch-icon" href="icones/icone-180.png">
@@ -188,6 +197,7 @@
 
     <p class="pied doux petit">Tes vidéos restent sur ton iPhone : rien n'est envoyé sur internet.
       Les originaux ne sont jamais modifiés.</p>
+    <p class="pied petit"><button type="button" class="lien" id="theme">Thème sombre</button></p>
     <p class="pied doux petit" id="version">Chargement…</p>
   </main>
 
